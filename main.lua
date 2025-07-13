@@ -364,8 +364,10 @@ local function create_balatro_api()
         end
         return server:json_response({
             state = state,
-            currentBlind = blind.name,
+            currentBlind = blind and blind.name or nil,
             jokers = jokers,
+            discardsRemaining = G.GAME.round_resets.discards,
+            handsRemaining = G.GAME.round_resets.hands,
             money = G.GAME and G.GAME.dollars or 0,
             round = G.GAME and G.GAME.round or 0,
             ante = G.GAME and G.GAME.round_resets.ante or 0

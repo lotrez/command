@@ -1,0 +1,16 @@
+{
+  "id": "command",
+  "name": "Command",
+  "display_name": "Command",
+  "author": [
+    "Lotrez"
+  ],
+  "description": "Control your Balatro game from http requests",
+  "prefix": "commh",
+  "main_file": "main.lua",
+  "priority": 0,
+  "badge_colour": "",
+  "badge_text_colour": "",
+  "version": "0.0.1",
+  "dependencies": []
+}

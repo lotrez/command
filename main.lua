@@ -353,6 +353,16 @@ local function create_balatro_api()
         else
             blind = G.P_BLINDS[G.GAME.round_resets.blind_choices.Boss]
         end
+        local consumables = {}
+        if G.consumeables ~= nil then
+            for _, v in ipairs(G.consumeables.cards) do
+                table.insert(consumables, {
+                    name = v.ability.name,
+                    sellPrice = v.sell_cost,
+                    id = v.sort_id
+                })
+            end
+        end
         local jokers = {}
         if G.jokers ~= nil then
             for _, v in ipairs(G.jokers.cards) do
@@ -360,7 +370,8 @@ local function create_balatro_api()
                     name = v.ability.name,
                     debuffed = v.debuff,
                     sellPrice = v.sell_cost,
-                    effect = v.ability.effect
+                    effect = v.ability.effect,
+                    id = v.sort_id
                 })
             end
         end
@@ -370,6 +381,7 @@ local function create_balatro_api()
             chipsNeeded = G.GAME and G.GAME.blind and G.GAME.blind.chips or nil,
             currentChips = G.GAME and G.GAME.chips or nil,
             jokers = jokers,
+            consumables = consumables,
             discardsRemaining = G.GAME.current_round.discards_left,
             handsRemaining = G.GAME.current_round.hands_left,
             money = G.GAME and G.GAME.dollars or 0,
@@ -595,6 +607,20 @@ local function create_balatro_api()
 
     server:get("/game/pack-contents", function(req)
         -- Process all shop categories
+
+        local targetable_cards = {}
+        if #G.hand then
+            for _, card in ipairs(G.hand.cards) do
+                table.insert(targetable_cards, {
+                    rank = card.base and card.base.value or nil,
+                    id = card.sort_id,
+                    name = card.ability and card.ability.name or nil,
+                    seal = card.seal,
+                    effect = card.ability and card.ability.effect or nil,
+                    type = card.ability and card.ability.set or nil
+                })
+            end
+        end
         local booster_cards = {}
         for _, card in ipairs(G.pack_cards.cards) do
             table.insert(booster_cards, {
@@ -607,12 +633,22 @@ local function create_balatro_api()
             })
         end
 
-        return server:json_response({ cards = booster_cards })
+        return server:json_response({ cards = booster_cards, targetableCards = targetable_cards })
     end)
 
     server:post("/game/select-pack-card", function(req)
         local data = req:json()
         local card_found = false
+
+        if data.targetCards then
+            for _, c in ipairs(data.targetCards) do
+                for __, game_c in ipairs(G.hand.cards) do
+                    if game_c.sort_id == c then
+                        G.hand:add_to_highlighted(game_c, false)
+                    end
+                end
+            end
+        end
 
         -- Find and use the card
         for _, card in ipairs(G.pack_cards.cards) do
@@ -635,7 +671,20 @@ local function create_balatro_api()
         return server:json_response({ status = "ok" })
     end)
 
-
+    server:post("/game/use-consumable", function(req)
+        local data = req:json()
+        for _, card in ipairs(G.consumeables.cards) do
+            if card.sort_id == data.consumable then
+                G.FUNCS.use_card({
+                    config = {
+                        ref_table = card
+                    }
+                })
+                return server:json_response({ status = "ok" })
+            end
+        end
+        return server:error_response({ status = "ko", message = "couldn't find consumable" })
+    end)
 
     server:post('/game/end-shop', function(req)
         if G.STATE ~= 5 then

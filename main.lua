@@ -354,20 +354,24 @@ local function create_balatro_api()
             blind = G.P_BLINDS[G.GAME.round_resets.blind_choices.Boss]
         end
         local jokers = {}
-        for _, v in ipairs(G.jokers.cards) do
-            table.insert(jokers, {
-                name = v.ability.name,
-                debuffed = v.debuff,
-                sellPrice = v.sell_cost,
-                effect = v.ability.effect
-            })
+        if G.jokers ~= nil then
+            for _, v in ipairs(G.jokers.cards) do
+                table.insert(jokers, {
+                    name = v.ability.name,
+                    debuffed = v.debuff,
+                    sellPrice = v.sell_cost,
+                    effect = v.ability.effect
+                })
+            end
         end
         return server:json_response({
             state = state,
             currentBlind = blind and blind.name or nil,
+            chipsNeeded = G.GAME and G.GAME.blind and G.GAME.blind.chips or nil,
+            currentChips = G.GAME and G.GAME.chips or nil,
             jokers = jokers,
-            discardsRemaining = G.GAME.round_resets.discards,
-            handsRemaining = G.GAME.round_resets.hands,
+            discardsRemaining = G.GAME.current_round.discards_left,
+            handsRemaining = G.GAME.current_round.hands_left,
             money = G.GAME and G.GAME.dollars or 0,
             round = G.GAME and G.GAME.round or 0,
             ante = G.GAME and G.GAME.round_resets.ante or 0
@@ -494,13 +498,40 @@ local function create_balatro_api()
         return server:json_response({ shop = shop })
     end)
 
+    server:post("/game/sell-cards", function(req)
+        local data = req:json()
+        local all_cards = {}
+        for _, v in ipairs(G.jokers.cards) do
+            table.insert(all_cards, v)
+        end
+        for _, v in ipairs(G.consumeables.cards) do
+            table.insert(all_cards, v)
+        end
+        -- todo find orrect card and G.funcs:sell_card
+        local wanted_sell_cards = {}
+        for _, c in ipairs(data.sells) do
+            for _, game_c in ipairs(all_cards) do
+                if c == game_c.sort_id then
+                    table.insert(wanted_sell_cards, game_c)
+                end
+            end
+        end
+
+        for _, c in ipairs(wanted_sell_cards) do
+            G.FUNCS.sell_card({
+                config = {
+                    ref_table = c
+                }
+            })
+        end
+
+        return server:json_response({ status = "ok" })
+    end)
+
     server:post('/game/buy-shop', function(req)
         local data = req:json()
         local all_cards = {}
         for _, v in ipairs(G.shop_jokers.cards) do
-            table.insert(all_cards, v)
-        end
-        for _, v in ipairs(G.shop_booster.cards) do
             table.insert(all_cards, v)
         end
         for _, v in ipairs(G.shop_vouchers.cards) do
@@ -536,12 +567,87 @@ local function create_balatro_api()
                     ref_table = c
                 }
             })
+            -- SI VOUCHER il FAUT REDEEM!!!
+        end
+        return server:json_response({ status = "ok" })
+    end)
+
+    server:post('/game/open-pack', function(req)
+        local data = req:json()
+        local all_cards = {}
+        for _, v in ipairs(G.shop_booster.cards) do
+            table.insert(all_cards, v)
+        end
+        sendInfoMessage("Got " .. tonumber(#all_cards) .. " cards to buy from", "CommandHttpServer")
+        for _, game_c in ipairs(all_cards) do
+            if data.pack == game_c.sort_id then
+                -- game_c:open()
+                G.FUNCS.use_card({
+                    config = {
+                        ref_table = game_c
+                    }
+                })
+                return server:json_response({ status = "ok" })
+            end
+        end
+        return server:error_response({ status = "ko" })
+    end)
+
+    server:get("/game/pack-contents", function(req)
+        -- Process all shop categories
+        local booster_cards = {}
+        for _, card in ipairs(G.pack_cards.cards) do
+            table.insert(booster_cards, {
+                rank = card.base and card.base.value or nil,
+                id = card.sort_id,
+                name = card.ability and card.ability.name or nil,
+                seal = card.seal,
+                effect = card.ability and card.ability.effect or nil,
+                type = card.ability and card.ability.set or nil
+            })
+        end
+
+        return server:json_response({ cards = booster_cards })
+    end)
+
+    server:post("/game/select-pack-card", function(req)
+        local data = req:json()
+        local card_found = false
+
+        -- Find and use the card
+        for _, card in ipairs(G.pack_cards.cards) do
+            if card.sort_id == data.card then
+                G.FUNCS.use_card({
+                    config = {
+                        ref_table = card
+                    }
+                })
+                card_found = true
+                break -- Exit the loop once the card is found and used
+            end
+        end
+
+        if not card_found then
+            -- Optional: handle the case where the card ID wasn't found
+            return server:json_response({ status = "error", message = "Card not found in pack." })
+        end
+
+        return server:json_response({ status = "ok" })
+    end)
+
+
+
+    server:post('/game/end-shop', function(req)
+        if G.STATE ~= 5 then
+            server:error_response({ status = "ko", message = "Wrong state to be in" })
         end
 
         G.FUNCS.toggle_shop()
 
         return server:json_response({ status = "ok" })
     end)
+
+
 
     -- Play hand with specific cards
     server:post("/game/play-hand", function(req)
@@ -730,6 +836,7 @@ end
 -- Integration with Balatro mod
 local balatro_server = create_balatro_api()
 balatro_server:start()
+G.SETTINGS.GAMESPEED = 1000
 
 -- Hook into the game loop
 local orig_update = love.update

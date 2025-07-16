@@ -1,8 +1,9 @@
 local socket = require "socket"
 local json = require "json"
 
--- HTTP Server Class
-local HttpServer = {}
+sendInfoMessage("Loading http server", "CommandHttpServer")
+
+HttpServer = {}
 HttpServer.__index = HttpServer
 
 function HttpServer:new(port)
@@ -13,7 +14,6 @@ function HttpServer:new(port)
     running = false
   }
   setmetatable(server, self)
-  sendInfoMessage("Started server", "CommandHttpServer")
   return server
 end
 
@@ -263,7 +263,6 @@ function HttpServer:handle_client(client)
         if success then
           return result
         else
-          sendInfoMessage("JSON decode error: " .. tostring(result), "CommandHttpServer")
           return nil
         end
       end
@@ -271,17 +270,9 @@ function HttpServer:handle_client(client)
     end
   }
 
-  -- Debug logging
-  sendInfoMessage("Request method: " .. request.method, "CommandHttpServer")
-  sendInfoMessage("Request path: " .. request.path, "CommandHttpServer")
-  sendInfoMessage("Request body length: " .. #request.body, "CommandHttpServer")
-  sendInfoMessage("Request body: " .. request.body, "CommandHttpServer")
-  sendInfoMessage("Content-Type: " .. (request.headers["content-type"] or "none"), "CommandHttpServer")
-
   -- Call handler
   local success, response = pcall(handler, context)
   if not success then
-    sendInfoMessage("Handler error: " .. tostring(response), "CommandHttpServer")
     client:send(self:error_response("Internal Server Error: " .. tostring(response), 500))
   else
     client:send(response)

@@ -48,23 +48,13 @@ local function create_balatro_api()
         local consumables = {}
         if G.consumeables ~= nil then
             for _, v in ipairs(G.consumeables.cards) do
-                table.insert(consumables, {
-                    name = v.ability.name,
-                    sellPrice = v.sell_cost,
-                    id = v.sort_id
-                })
+                table.insert(consumables, FORMAT_CONSUMABLE(v))
             end
         end
         local jokers = {}
         if G.jokers ~= nil then
             for _, v in ipairs(G.jokers.cards) do
-                table.insert(jokers, {
-                    name = v.ability.name,
-                    debuffed = v.debuff,
-                    sellPrice = v.sell_cost,
-                    effect = v.ability.effect,
-                    id = v.sort_id
-                })
+                table.insert(jokers, FORMAT_JOKER(v))
             end
         end
         return server:json_response({
@@ -144,15 +134,7 @@ local function create_balatro_api()
         local hand_info = {}
         if G.hand and G.hand.cards then
             for i, card in ipairs(G.hand.cards) do
-                table.insert(hand_info, {
-                    suit = card.base.suit,
-                    rank = card.base.value,
-                    id = card.sort_id,
-                    name = card.ability.name,
-                    seal = card.seal,
-                    effect = card.ability.effect,
-                    debuffed = card.debuff
-                })
+                table.insert(hand_info, FORMAT_PLAYING_CARD(card))
             end
         end
         return server:json_response({
@@ -165,19 +147,6 @@ local function create_balatro_api()
     server:get("/game/shop", function(req)
         local shop = {}
 
-        -- Helper function to extract card data
-        local function extract_card_data(card)
-            return {
-                cost = card.cost,
-                rank = card.base and card.base.value or nil,
-                id = card.sort_id,
-                name = card.ability and card.ability.name or nil,
-                seal = card.seal,
-                effect = card.ability and card.ability.effect or nil,
-                type = card.ability and card.ability.set or nil
-            }
-        end
-
         -- Shop categories to process
         local shop_categories = {
             G.shop_jokers,
@@ -189,7 +158,7 @@ local function create_balatro_api()
         for _, category in ipairs(shop_categories) do
             if category and category.cards then
                 for _, card in ipairs(category.cards) do
-                    shop[#shop + 1] = extract_card_data(card)
+                    shop[#shop + 1] = FORMAT_SHOP_CARD(card)
                 end
             end
         end
@@ -296,28 +265,14 @@ local function create_balatro_api()
         local targetable_cards = {}
         if G.hand and #G.hand.cards > 0 then
             for _, card in ipairs(G.hand.cards) do
-                table.insert(targetable_cards, {
-                    rank = card.base and card.base.value or nil,
-                    id = card.sort_id,
-                    name = card.ability and card.ability.name or nil,
-                    seal = card.seal,
-                    effect = card.ability and card.ability.effect or nil,
-                    type = card.ability and card.ability.set or nil
-                })
+                table.insert(targetable_cards, FORMAT_PLAYING_CARD(card))
             end
         end
 
         local booster_cards = {}
         if G.pack_cards and G.pack_cards.cards then
             for _, card in ipairs(G.pack_cards.cards) do
-                table.insert(booster_cards, {
-                    rank = card.base and card.base.value or nil,
-                    id = card.sort_id,
-                    name = card.ability and card.ability.name or nil,
-                    seal = card.seal,
-                    effect = card.ability and card.ability.effect or nil,
-                    type = card.ability and card.ability.set or nil
-                })
+                table.insert(booster_cards, FORMAT_BOOSTER_CARD(card))
             end
         end
 

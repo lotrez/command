@@ -261,6 +261,41 @@ local function create_balatro_api()
         return server:json_response({ status = "ok" })
     end)
 
+    server:post('/game/redeem-voucher', function(req)
+        local data = req:json()
+        Logger:info("Received redeem voucher request", "CommandHttpServer")
+        if not data or not data.voucher then
+            Logger:warn("Invalid JSON for redeem voucher request", "CommandHttpServer")
+            return server:error_response(
+            { status = "ko", message = "Invalid request body. 'voucher' field is required." }, 400)
+        end
+
+        local voucher_id = data.voucher
+        local voucher_found = false
+
+        if G.shop_vouchers and G.shop_vouchers.cards then
+            for _, voucher_card in ipairs(G.shop_vouchers.cards) do
+                if voucher_card.sort_id == voucher_id then
+                    G.FUNCS.use_card({
+                        config = {
+                            ref_table = voucher_card
+                        }
+                    })
+                    voucher_found = true
+                    break
+                end
+            end
+        end
+
+        if voucher_found then
+            Logger:info("Voucher redeemed successfully: " .. voucher_id, "CommandHttpServer")
+            return server:json_response({ status = "ok", message = "Voucher redeemed successfully." })
+        else
+            Logger:warn("Voucher not found or not redeemable: " .. voucher_id, "CommandHttpServer")
+            return server:error_response({ status = "ko", message = "Voucher not found or not redeemable." }, 404)
+        end
+    end)
+
     server:post('/game/open-pack', function(req)
         local data = req:json()
         Logger:info("Received open pack request", "CommandHttpServer")

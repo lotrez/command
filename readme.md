@@ -14,7 +14,6 @@ Command is a mod that creates a small rest-like HTTP server to handle some of th
 
 ## Missing features
 
-- Redeem vouchers
 - Skip blinds
 - Skip packs
 - Get joker progress info

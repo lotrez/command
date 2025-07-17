@@ -6,9 +6,11 @@ local mod_path = "" ..
 
 local files = NFS.getDirectoryItems(mod_path .. "lib")
 for _, file in ipairs(files) do
+    -- logger is not loaded yet
     sendInfoMessage("Loading library file " .. file, "CommandHttpServer")
     local f, err = SMODS.load_file("lib/" .. file)
     if err then
+        Logger:error("Error loading library file " .. file .. ": " .. err, "CommandHttpServer")
         error(err) --Steamodded actually does a really good job of displaying this info! So we don't need to do anything else.
     end
     f()
@@ -16,12 +18,13 @@ end
 
 -- Create Balatro API endpoints
 local function create_balatro_api()
-    local server = HttpServer:new(8080)
+    local server = HttpServer:new(CONFIG.http_server_port)
 
-    sendInfoMessage("Started server", "CommandHttpServer")
+    Logger:info("Started server on port " .. CONFIG.http_server_port, "CommandHttpServer")
 
     -- Health check endpoint
     server:get("/health", function(req)
+        Logger:debug("Received health check request", "CommandHttpServer")
         return server:json_response({
             status = "ok",
             game = "Balatro",
@@ -31,6 +34,7 @@ local function create_balatro_api()
 
     -- Get game state
     server:get("/game/state", function(req)
+        Logger:debug("Received game state request", "CommandHttpServer")
         local state = nil
         for name, value in pairs(G.STATES) do
             if value == G.STATE then
@@ -73,14 +77,16 @@ local function create_balatro_api()
     end)
 
     server:post("/game/select-next-blind", function(req)
+        Logger:info("Received select next blind request", "CommandHttpServer")
         if G.STATE ~= 7 then
+            Logger:warn("Wrong state to select blind: " .. G.STATE, "CommandHttpServer")
             return server:json_response({
                 status = "ko",
                 message = "wrong state to be in, not blind_select"
             })
         end
         local blind = {}
-        sendInfoMessage("Blinds available: " .. #G.P_BLINDS, "CommandHttpServer")
+        Logger:debug("Blinds available: " .. #G.P_BLINDS, "CommandHttpServer")
 
         if G.GAME.round_resets.blind_states.Small == "Select" then
             blind = G.P_BLINDS.bl_small
@@ -96,18 +102,21 @@ local function create_balatro_api()
             }
         }
         G.FUNCS.select_blind(mock_e)
+        Logger:info("Blind selected successfully", "CommandHttpServer")
         return server:json_response({
             status = "ok",
         })
     end)
 
     server:post("/game/cash-out", function(req)
+        Logger:info("Received cash out request", "CommandHttpServer")
         local e = {
             config = {
                 button = nil
             }
         }
         G.FUNCS.cash_out(e)
+        Logger:info("Cashed out successfully", "CommandHttpServer")
         return server:json_response({
             status = "ok"
         })
@@ -115,6 +124,9 @@ local function create_balatro_api()
 
     server:post("/game/start", function(req)
         local args = req:json()
+        Logger:info(
+            "Received game start request with deck: " .. (args.deck or "Red Deck") .. " and seed: " .. (args.seed or ""),
+            "CommandHttpServer")
         G.SETTINGS.paused = true
         G.E_MANAGER:clear_queue()
         G:delete_run()
@@ -124,6 +136,7 @@ local function create_balatro_api()
             stake = args.stake,
             seed = args.seed
         })
+        Logger:info("Game started successfully", "CommandHttpServer")
         return server:json_response({
             status = "ok"
         })
@@ -131,6 +144,7 @@ local function create_balatro_api()
 
     -- Get hand information
     server:get("/game/hand", function(req)
+        Logger:debug("Received hand information request", "CommandHttpServer")
         local hand_info = {}
         if G.hand and G.hand.cards then
             for i, card in ipairs(G.hand.cards) do
@@ -145,6 +159,7 @@ local function create_balatro_api()
 
     -- Get shop information
     server:get("/game/shop", function(req)
+        Logger:debug("Received shop information request", "CommandHttpServer")
         local shop = {}
 
         -- Shop categories to process
@@ -168,6 +183,7 @@ local function create_balatro_api()
 
     server:post("/game/sell-cards", function(req)
         local data = req:json()
+        Logger:info("Received sell cards request", "CommandHttpServer")
         local all_cards = {}
         for _, v in ipairs(G.jokers.cards) do
             table.insert(all_cards, v)
@@ -192,12 +208,13 @@ local function create_balatro_api()
                 }
             })
         end
-
+        Logger:info("Cards sold successfully", "CommandHttpServer")
         return server:json_response({ status = "ok" })
     end)
 
     server:post('/game/buy-shop', function(req)
         local data = req:json()
+        Logger:info("Received buy shop request", "CommandHttpServer")
         local all_cards = {}
         for _, v in ipairs(G.shop_jokers.cards) do
             table.insert(all_cards, v)
@@ -205,7 +222,7 @@ local function create_balatro_api()
         for _, v in ipairs(G.shop_vouchers.cards) do
             table.insert(all_cards, v)
         end
-        sendInfoMessage("Got " .. tonumber(#all_cards) .. " cards to buy from", "CommandHttpServer")
+        Logger:debug("Got " .. tonumber(#all_cards) .. " cards to buy from", "CommandHttpServer")
 
         local wanted_buy_cards = {}
         for _, c in ipairs(data.buys) do
@@ -223,6 +240,9 @@ local function create_balatro_api()
         end
 
         if total_cost > G.GAME.dollars then
+            Logger:warn(
+                "Tried to buy more than available money. Total cost: " .. total_cost .. ", Money: " .. G.GAME.dollars,
+                "CommandHttpServer")
             return server:error_response({
                 status = "ko",
                 message = "Tried to buy more than you have money"
@@ -230,23 +250,25 @@ local function create_balatro_api()
         end
 
         for _, c in ipairs(wanted_buy_cards) do
-            sendInfoMessage("Trying to buy card " .. c.ability.name, "CommandHttpServer")
+            Logger:info("Trying to buy card " .. c.ability.name, "CommandHttpServer")
             G.FUNCS.buy_from_shop({
                 config = {
                     ref_table = c
                 }
             })
         end
+        Logger:info("Cards bought successfully", "CommandHttpServer")
         return server:json_response({ status = "ok" })
     end)
 
     server:post('/game/open-pack', function(req)
         local data = req:json()
+        Logger:info("Received open pack request", "CommandHttpServer")
         local all_cards = {}
         for _, v in ipairs(G.shop_booster.cards) do
             table.insert(all_cards, v)
         end
-        sendInfoMessage("Got " .. tonumber(#all_cards) .. " cards to buy from", "CommandHttpServer")
+        Logger:debug("Got " .. tonumber(#all_cards) .. " cards to buy from", "CommandHttpServer")
 
         for _, game_c in ipairs(all_cards) do
             if data.pack == game_c.sort_id then
@@ -255,13 +277,16 @@ local function create_balatro_api()
                         ref_table = game_c
                     }
                 })
+                Logger:info("Pack opened and card used successfully", "CommandHttpServer")
                 return server:json_response({ status = "ok" })
             end
         end
+        Logger:warn("Pack not found or card not used", "CommandHttpServer")
         return server:error_response({ status = "ko" })
     end)
 
     server:get("/game/pack-contents", function(req)
+        Logger:debug("Received pack contents request", "CommandHttpServer")
         local targetable_cards = {}
         if G.hand and #G.hand.cards > 0 then
             for _, card in ipairs(G.hand.cards) do
@@ -281,6 +306,7 @@ local function create_balatro_api()
 
     server:post("/game/select-pack-card", function(req)
         local data = req:json()
+        Logger:info("Received select pack card request", "CommandHttpServer")
         local card_found = false
 
         if data.targetCards then
@@ -307,14 +333,17 @@ local function create_balatro_api()
         end
 
         if not card_found then
+            Logger:warn("Card not found in pack: " .. (data.card or "nil"), "CommandHttpServer")
             return server:json_response({ status = "error", message = "Card not found in pack." })
         end
 
+        Logger:info("Pack card selected successfully", "CommandHttpServer")
         return server:json_response({ status = "ok" })
     end)
 
     server:post("/game/use-consumable", function(req)
         local data = req:json()
+        Logger:info("Received use consumable request", "CommandHttpServer")
         for _, card in ipairs(G.consumeables.cards) do
             if card.sort_id == data.consumable then
                 G.FUNCS.use_card({
@@ -322,32 +351,39 @@ local function create_balatro_api()
                         ref_table = card
                     }
                 })
+                Logger:info("Consumable used successfully", "CommandHttpServer")
                 return server:json_response({ status = "ok" })
             end
         end
+        Logger:warn("Consumable not found: " .. (data.consumable or "nil"), "CommandHttpServer")
         return server:error_response({ status = "ko", message = "couldn't find consumable" })
     end)
 
     server:post('/game/end-shop', function(req)
+        Logger:info("Received end shop request", "CommandHttpServer")
         if G.STATE ~= 5 then
+            Logger:warn("Wrong state to end shop: " .. G.STATE, "CommandHttpServer")
             return server:error_response({ status = "ko", message = "Wrong state to be in" })
         end
 
         G.FUNCS.toggle_shop()
+        Logger:info("Shop ended successfully", "CommandHttpServer")
         return server:json_response({ status = "ok" })
     end)
 
     -- Play hand with specific cards
     server:post("/game/play-hand", function(req)
         local data = req:json()
-        sendInfoMessage("Playing hand", "CommandHttpServer")
+        Logger:info("Playing hand", "CommandHttpServer")
 
         if not data or type(data.cards) ~= "table" then
+            Logger:warn("Invalid card list for play hand request", "CommandHttpServer")
             return server:error_response("Invalid card list", 400)
         end
 
         -- Check if hand exists
         if not G.hand or not G.hand.cards then
+            Logger:warn("No hand available for play hand request", "CommandHttpServer")
             return server:error_response("No hand available", 503)
         end
 
@@ -368,6 +404,7 @@ local function create_balatro_api()
                 and tonumber(raw_card_id) or raw_card_id
 
             if type(card_id) ~= "number" then
+                Logger:warn("Invalid card ID type: " .. type(raw_card_id), "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Invalid card ID: Expected number",
@@ -376,6 +413,7 @@ local function create_balatro_api()
             end
 
             if seen_cards[card_id] then
+                Logger:warn("Duplicate card ID submitted: " .. card_id, "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Duplicate card ID submitted",
@@ -387,6 +425,7 @@ local function create_balatro_api()
 
             -- Check if card exists in current hand
             if not hand_cards[card_id] then
+                Logger:warn("Card ID not found in current hand: " .. card_id, "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Card ID not found in current hand",
@@ -398,14 +437,14 @@ local function create_balatro_api()
         end
 
         -- Highlight cards and play them
-        sendInfoMessage("G.hand.length" .. #G.hand.cards, "CommandHttpServer")
-        sendInfoMessage("G.hand.highlighted" .. #G.hand.highlighted, "CommandHttpServer")
-        sendInfoMessage("G.hand.config.type" .. G.hand.config.type, "CommandHttpServer")
+        Logger:debug("G.hand.length" .. #G.hand.cards, "CommandHttpServer")
+        Logger:debug("G.hand.highlighted" .. #G.hand.highlighted, "CommandHttpServer")
+        Logger:debug("G.hand.config.type" .. G.hand.config.type, "CommandHttpServer")
 
         for i, v in ipairs(valid_cards) do
             for y, c in ipairs(G.hand.cards) do
                 if c.sort_id == v then
-                    sendInfoMessage("Found, adding" .. v, "CommandHttpServer")
+                    Logger:debug("Found, adding" .. v, "CommandHttpServer")
                     G.hand:add_to_highlighted(c, false)
                     break
                 end
@@ -413,6 +452,7 @@ local function create_balatro_api()
         end
 
         G.FUNCS.play_cards_from_highlighted()
+        Logger:info("Hand played successfully", "CommandHttpServer")
 
         return server:json_response({
             success = true,
@@ -423,14 +463,16 @@ local function create_balatro_api()
 
     server:post("/game/discard-hand", function(req)
         local data = req:json()
-        sendInfoMessage("Discarding hand", "CommandHttpServer")
+        Logger:info("Discarding hand", "CommandHttpServer")
 
         if not data or type(data.cards) ~= "table" then
+            Logger:warn("Invalid card list for discard hand request", "CommandHttpServer")
             return server:error_response("Invalid card list", 400)
         end
 
         -- Check if hand exists
         if not G.hand or not G.hand.cards then
+            Logger:warn("No hand available for discard hand request", "CommandHttpServer")
             return server:error_response("No hand available", 503)
         end
 
@@ -451,6 +493,7 @@ local function create_balatro_api()
                 and tonumber(raw_card_id) or raw_card_id
 
             if type(card_id) ~= "number" then
+                Logger:warn("Invalid card ID type: " .. type(raw_card_id), "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Invalid card ID: Expected number",
@@ -459,6 +502,7 @@ local function create_balatro_api()
             end
 
             if seen_cards[card_id] then
+                Logger:warn("Duplicate card ID submitted: " .. card_id, "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Duplicate card ID submitted",
@@ -470,6 +514,7 @@ local function create_balatro_api()
 
             -- Check if card exists in current hand
             if not hand_cards[card_id] then
+                Logger:warn("Card ID not found in current hand: " .. card_id, "CommandHttpServer")
                 return server:json_response({
                     success = false,
                     message = "Card ID not found in current hand",
@@ -481,14 +526,14 @@ local function create_balatro_api()
         end
 
         -- Highlight cards and discard them
-        sendInfoMessage("G.hand.length" .. #G.hand.cards, "CommandHttpServer")
-        sendInfoMessage("G.hand.highlighted" .. #G.hand.highlighted, "CommandHttpServer")
-        sendInfoMessage("G.hand.config.type" .. G.hand.config.type, "CommandHttpServer")
+        Logger:debug("G.hand.length" .. #G.hand.cards, "CommandHttpServer")
+        Logger:debug("G.hand.highlighted" .. #G.hand.highlighted, "CommandHttpServer")
+        Logger:debug("G.hand.config.type" .. G.hand.config.type, "CommandHttpServer")
 
         for i, v in ipairs(valid_cards) do
             for y, c in ipairs(G.hand.cards) do
                 if c.sort_id == v then
-                    sendInfoMessage("Found, adding" .. v, "CommandHttpServer")
+                    Logger:debug("Found, adding" .. v, "CommandHttpServer")
                     G.hand:add_to_highlighted(c, false)
                     break
                 end
@@ -496,6 +541,7 @@ local function create_balatro_api()
         end
 
         G.FUNCS.discard_cards_from_highlighted()
+        Logger:info("Hand discarded successfully", "CommandHttpServer")
 
         return server:json_response({
             success = true,
@@ -507,10 +553,13 @@ local function create_balatro_api()
     -- Update game setting
     server:put("/game/settings", function(req)
         local data = req:json()
+        Logger:info("Received update game settings request", "CommandHttpServer")
         if not data then
+            Logger:warn("Invalid JSON for update game settings request", "CommandHttpServer")
             return server:error_response("Invalid JSON", 400)
         end
 
+        Logger:info("Game settings updated successfully", "CommandHttpServer")
         return server:json_response({
             success = true,
             updated = data
@@ -523,6 +572,7 @@ end
 -- Initialize and start the Balatro API server
 local balatro_server = create_balatro_api()
 balatro_server:start()
+Logger:info("Balatro API server initialized and started", "CommandHttpServer")
 G.SETTINGS.GAMESPEED = 1000
 
 -- Hook into the game loop

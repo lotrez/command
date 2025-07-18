@@ -261,13 +261,21 @@ local function create_balatro_api()
         return server:json_response({ status = "ok" })
     end)
 
+    server:post('/game/reroll-shop', function(req)
+        if ((G.GAME.dollars - G.GAME.bankrupt_at) - G.GAME.current_round.reroll_cost < 0) and G.GAME.current_round.reroll_cost ~= 0 then
+            return server:error_response({ status = "ko", message = "not enough money" })
+        else
+            G.FUNCS.reroll_shop()
+        end
+    end)
+
     server:post('/game/redeem-voucher', function(req)
         local data = req:json()
         Logger:info("Received redeem voucher request", "CommandHttpServer")
         if not data or not data.voucher then
             Logger:warn("Invalid JSON for redeem voucher request", "CommandHttpServer")
             return server:error_response(
-            { status = "ko", message = "Invalid request body. 'voucher' field is required." }, 400)
+                { status = "ko", message = "Invalid request body. 'voucher' field is required." }, 400)
         end
 
         local voucher_id = data.voucher
